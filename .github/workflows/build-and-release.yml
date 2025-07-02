@@ -66,14 +66,26 @@ jobs:
       - name: Check if should release
         id: release-check
         run: |
+          echo "=== Release Check Debug ==="
+          echo "Event name: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "Create release input: ${{ inputs.create_release }}"
+
           should_release=false
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "✅ Condition met: Push to main branch"
             should_release=true
           elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "✅ Condition met: Push to version tag"
             should_release=true
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.create_release }}" == "true" ]]; then
+            echo "✅ Condition met: Manual dispatch with create_release=true"
             should_release=true
+          else
+            echo "❌ No release conditions met"
           fi
+
+          echo "Final decision: should_release=$should_release"
           echo "should_release=$should_release" >> $GITHUB_OUTPUT
 
   locales-test:
@@ -270,6 +282,15 @@ jobs:
       _VERSION: ${{ needs.setup.outputs.version }}
       _BUILD_NUMBER: ${{ needs.setup.outputs.build_number }}
     steps:
+      - name: Debug release info
+        run: |
+          echo "=== Release Debug Info ==="
+          echo "Should release: ${{ needs.setup.outputs.should_release }}"
+          echo "Version: ${{ needs.setup.outputs.version }}"
+          echo "Build number: ${{ needs.setup.outputs.build_number }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
+
       - name: Check out repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
@@ -279,24 +300,53 @@ jobs:
           pattern: '*-${{ env._BUILD_NUMBER }}.zip'
           merge-multiple: true
 
+      - name: Debug downloaded artifacts
+        run: |
+          echo "=== Downloaded artifacts ==="
+          ls -la *.zip || echo "No zip files found"
+          echo "=== All files ==="
+          ls -la
+
       - name: Rename build artifacts
         run: |
-          # Rename artifacts to include version
-          mv browser-source.zip wardens-key-browser-source-${{ env._VERSION }}.zip
+          echo "=== Renaming artifacts ==="
+
+          # Rename browser source if it exists
+          if [[ -f "browser-source.zip" ]]; then
+            mv browser-source.zip wardens-key-browser-source-${{ env._VERSION }}.zip
+            echo "✅ Renamed browser-source.zip"
+          else
+            echo "❌ browser-source.zip not found"
+          fi
 
           # Find and rename extension artifacts
-          for file in dist-*-${{ env._BUILD_NUMBER }}.zip; do
-            if [[ -f "$file" ]]; then
-              # Extract the browser name from filename
-              browser_name=$(echo "$file" | sed 's/dist-\(.*\)-MV3-.*\.zip/\1/' | sed 's/dist-\(.*\)-.*\.zip/\1/')
+          echo "Looking for extension artifacts..."
+          for file in *-${{ env._BUILD_NUMBER }}.zip; do
+            if [[ -f "$file" && "$file" != "browser-source-${{ env._BUILD_NUMBER }}.zip" ]]; then
+              echo "Processing: $file"
+
+              # Extract browser name more carefully
+              if [[ "$file" =~ dist-chrome-MV3-.* ]]; then
+                browser_name="chrome"
+              elif [[ "$file" =~ dist-firefox-.* ]]; then
+                browser_name="firefox"
+              elif [[ "$file" =~ dist-edge-MV3-.* ]]; then
+                browser_name="edge"
+              elif [[ "$file" =~ dist-opera-MV3-.* ]]; then
+                browser_name="opera"
+              else
+                # Fallback: extract from filename
+                browser_name=$(echo "$file" | sed 's/dist-\(.*\)-MV3-.*/\1/' | sed 's/dist-\(.*\)-.*/\1/')
+              fi
+
               new_name="wardens-key-${browser_name}-${{ env._VERSION }}.zip"
               mv "$file" "$new_name"
-              echo "Renamed $file to $new_name"
+              echo "✅ Renamed $file to $new_name"
             fi
           done
 
-          # List all files for verification
-          ls -la *.zip
+          echo "=== Final artifact list ==="
+          ls -la wardens-key-*.zip || echo "No wardens-key artifacts found"
 
       - name: Generate release notes
         id: release-notes
