@@ -81,10 +81,12 @@ Warden's Key 是基于 Bitwarden 浏览器扩展的修改版本，已移除 TOTP
 
 ## 🔧 自动化构建
 本项目使用 GitHub Actions 自动构建：
-- **持续集成**：每次代码更新自动构建所有浏览器版本
-- **自动发布**：通过 GitHub Releases 自动发布构建产物
+- **统一工作流**：一个工作流完成构建和发布全流程
+- **智能触发**：仅在 browser-source 目录变更时触发构建
 - **多平台支持**：同时构建 Chrome、Firefox、Edge、Opera 版本
+- **自动发布**：推送到 main 分支时自动创建 GitHub Releases
 - **源码打包**：同时提供修改后的源码包供审查
+- **版本管理**：自动从 manifest.json 读取版本号
 
 ## 🛠️ 手动构建（可选）
 如果您想自己构建扩展：

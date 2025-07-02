@@ -1,0 +1,330 @@
+name: Build and Release Warden's Key
+
+on:
+  push:
+    branches:
+      - 'main'
+    paths:
+      - 'browser-source/**'
+      - '.github/workflows/build-and-release.yml'
+    tags:
+      - 'v*'
+  pull_request:
+    types: [opened, synchronize]
+    paths:
+      - 'browser-source/**'
+      - '.github/workflows/build-and-release.yml'
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create GitHub Release'
+        required: false
+        default: false
+        type: boolean
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: write
+
+jobs:
+  setup:
+    name: Setup
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      build_number: ${{ steps.version.outputs.build_number }}
+      node_version: ${{ steps.node-version.outputs.node_version }}
+      should_release: ${{ steps.release-check.outputs.should_release }}
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Get version info
+        id: version
+        run: |
+          VERSION=$(jq -r '.version' browser-source/apps/browser/src/manifest.json)
+          BUILD_NUMBER=${GITHUB_SHA:0:7}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+
+      - name: Get Node Version
+        id: node-version
+        run: |
+          NODE_NVMRC=$(cat browser-source/.nvmrc)
+          NODE_VERSION=${NODE_NVMRC/v/''}
+          echo "node_version=$NODE_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Check if should release
+        id: release-check
+        run: |
+          should_release=false
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+            should_release=true
+          elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == refs/tags/v* ]]; then
+            should_release=true
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.create_release }}" == "true" ]]; then
+            should_release=true
+          fi
+          echo "should_release=$should_release" >> $GITHUB_OUTPUT
+
+  locales-test:
+    name: Locales Test
+    runs-on: ubuntu-22.04
+    needs: setup
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Testing locales - extName length
+        run: |
+         found_error=false
+
+         echo "Locales Test"
+         echo "============"
+         echo "extName string must be 40 characters or less"
+         echo
+         for locale in $(ls browser-source/apps/browser/src/_locales/); do
+           string_length=$(jq '.extName.message | length' browser-source/apps/browser/src/_locales/$locale/messages.json)
+           if [[ $string_length -gt 40 ]]; then
+             echo "$locale: $string_length"
+             found_error=true
+           fi
+         done
+
+         if $found_error; then
+           echo
+           echo "Please fix 'extName' for the locales listed above."
+           exit 1
+         else
+           echo "Test passed!"
+         fi
+
+  build-source:
+    name: Build browser source
+    runs-on: ubuntu-22.04
+    needs: [setup, locales-test]
+    env:
+      _BUILD_NUMBER: ${{ needs.setup.outputs.build_number }}
+      _NODE_VERSION: ${{ needs.setup.outputs.node_version }}
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Node
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          cache: 'npm'
+          cache-dependency-path: '**/package-lock.json'
+          node-version: ${{ env._NODE_VERSION }}
+
+      - name: Print environment
+        run: |
+          node --version
+          npm --version
+
+      - name: Build sources for reviewers
+        run: |
+          # Create a copy of browser-source for packaging
+          cp -r browser-source browser-source-package
+          
+          # Remove .git directory if it exists
+          rm -rf browser-source-package/.git
+          
+          # Create zip package
+          zip -r browser-source.zip browser-source-package
+
+      - name: Upload browser source
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: browser-source-${{ env._BUILD_NUMBER }}.zip
+          path: browser-source.zip
+          if-no-files-found: error
+
+  build:
+    name: Build Extensions
+    runs-on: ubuntu-22.04
+    needs: [setup, locales-test, build-source]
+    env:
+      _BUILD_NUMBER: ${{ needs.setup.outputs.build_number }}
+      _NODE_VERSION: ${{ needs.setup.outputs.node_version }}
+    strategy:
+      matrix:
+        include:
+          - name: "chrome"
+            npm_command: "dist:chrome"
+            archive_name: "dist-chrome.zip"
+            artifact_name: "dist-chrome-MV3"
+          - name: "edge"
+            npm_command: "dist:edge"
+            archive_name: "dist-edge.zip"
+            artifact_name: "dist-edge-MV3"
+          - name: "firefox"
+            npm_command: "dist:firefox"
+            archive_name: "dist-firefox.zip"
+            artifact_name: "dist-firefox"
+          - name: "opera-mv3"
+            npm_command: "dist:opera:mv3"
+            archive_name: "dist-opera.zip"
+            artifact_name: "dist-opera-MV3"
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Node
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          cache: 'npm'
+          cache-dependency-path: '**/package-lock.json'
+          node-version: ${{ env._NODE_VERSION }}
+
+      - name: Print environment
+        run: |
+          node --version
+          npm --version
+
+      - name: Download browser source
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          name: browser-source-${{ env._BUILD_NUMBER }}.zip
+
+      - name: Unzip browser source artifact
+        run: |
+          unzip browser-source.zip
+          rm browser-source.zip
+
+      - name: NPM setup
+        run: npm ci
+        working-directory: browser-source-package/
+
+      - name: Check source file size
+        if: ${{ startsWith(matrix.name, 'firefox') }}
+        run: |
+          # Declare variable as indexed array
+          declare -a FILES
+
+          # Search for source files that are greater than 4M
+          TARGET_DIR='./browser-source-package/apps/browser'
+          while IFS=' ' read -r RESULT; do
+              FILES+=("$RESULT")
+          done < <(find $TARGET_DIR -size +4M)
+
+          # Validate results and provide messaging
+          if [[ ${#FILES[@]} -ne 0 ]]; then
+              echo "File(s) exceeds size limit: 4MB"
+              for FILE in ${FILES[@]}; do
+                  echo "- $(du --si $FILE)"
+              done
+              echo "ERROR Firefox rejects extension uploads that contain files larger than 4MB"
+              # Invoke failure
+              exit 1
+          fi
+
+      - name: Build extension
+        run: npm run ${{ matrix.npm_command }}
+        working-directory: browser-source-package/apps/browser
+
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: ${{ matrix.artifact_name }}-${{ env._BUILD_NUMBER }}.zip
+          path: browser-source-package/apps/browser/dist/${{ matrix.archive_name }}
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-22.04
+    needs: [setup, build]
+    if: ${{ needs.setup.outputs.should_release == 'true' }}
+    env:
+      _VERSION: ${{ needs.setup.outputs.version }}
+      _BUILD_NUMBER: ${{ needs.setup.outputs.build_number }}
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          pattern: '*-${{ env._BUILD_NUMBER }}.zip'
+          merge-multiple: true
+
+      - name: Rename build artifacts
+        run: |
+          # Rename artifacts to include version
+          mv browser-source.zip wardens-key-browser-source-${{ env._VERSION }}.zip
+
+          # Find and rename extension artifacts
+          for file in dist-*-${{ env._BUILD_NUMBER }}.zip; do
+            if [[ -f "$file" ]]; then
+              # Extract the browser name from filename
+              browser_name=$(echo "$file" | sed 's/dist-\(.*\)-MV3-.*\.zip/\1/' | sed 's/dist-\(.*\)-.*\.zip/\1/')
+              new_name="wardens-key-${browser_name}-${{ env._VERSION }}.zip"
+              mv "$file" "$new_name"
+              echo "Renamed $file to $new_name"
+            fi
+          done
+
+          # List all files for verification
+          ls -la *.zip
+
+      - name: Generate release notes
+        id: release-notes
+        run: |
+          cat > release_notes.md << 'EOF'
+          # Warden's Key v${{ env._VERSION }}
+
+          🔓 **TOTP 功能完全解锁版本**
+
+          ## 🎯 主要特性
+          - ✅ **完全解锁 TOTP 功能**：免费用户可使用所有 TOTP 相关功能
+          - ✅ **多浏览器支持**：Chrome、Firefox、Edge、Opera
+          - ✅ **保持原有功能**：不影响其他 Bitwarden 功能的正常使用
+          - ✅ **UI 完整性**：移除所有付费限制提示
+          - ✅ **自动填充支持**：TOTP 代码可用于自动填充
+
+          ## 📦 下载说明
+          请根据您的浏览器选择对应的扩展包：
+
+          - **Chrome**: `wardens-key-chrome-${{ env._VERSION }}.zip`
+          - **Firefox**: `wardens-key-firefox-${{ env._VERSION }}.zip`
+          - **Edge**: `wardens-key-edge-${{ env._VERSION }}.zip`
+          - **Opera**: `wardens-key-opera-${{ env._VERSION }}.zip`
+          - **源码包**: `wardens-key-browser-source-${{ env._VERSION }}.zip`
+
+          ## 📋 安装指南
+          详细安装说明请参考：[TOTP_UNLOCK_INSTALLATION_GUIDE.md](https://github.com/${{ github.repository }}/blob/main/TOTP_UNLOCK_INSTALLATION_GUIDE.md)
+
+          ## ⚠️ 免责声明
+          本修改版本仅供技术学习和研究使用。请尊重软件版权，支持官方正版软件的开发。
+          EOF
+
+          echo "Generated release notes"
+
+      - name: Create release
+        uses: ncipollo/release-action@cdcc88a9acf3ca41c16c37bb7d21b9ad48560d87 # v1.15.0
+        with:
+          artifacts: 'wardens-key-*.zip'
+          commit: ${{ github.sha }}
+          tag: "v${{ env._VERSION }}"
+          name: "Warden's Key v${{ env._VERSION }}"
+          bodyFile: "release_notes.md"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          draft: false
+          prerelease: false
+
+  check-failures:
+    name: Check for failures
+    if: always()
+    runs-on: ubuntu-22.04
+    needs: [setup, locales-test, build-source, build, release]
+    steps:
+      - name: Check if any job failed
+        if: |
+          github.event_name != 'pull_request'
+          && contains(needs.*.result, 'failure')
+        run: |
+          echo "One or more jobs failed"
+          exit 1

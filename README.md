@@ -48,9 +48,11 @@
 
 本项目已配置 GitHub Actions 自动化工作流：
 
-- **构建工作流** - 自动构建 Chrome、Firefox、Edge、Opera 扩展
-- **发布工作流** - 自动创建 GitHub Releases 并上传构建产物
-- **多浏览器支持** - 同时构建多个浏览器版本的扩展包
+- **统一构建发布流程** - 一个工作流完成构建和发布
+- **多浏览器支持** - 同时构建 Chrome、Firefox、Edge、Opera 扩展
+- **自动发布** - 推送到 main 分支时自动创建 GitHub Releases
+- **源码打包** - 同时提供修改后的源码包供审查
+- **智能触发** - 仅在 browser-source 目录变更时触发构建
 
 ## 📁 项目结构
 
@@ -61,9 +63,7 @@ wardens-key/
 │   ├── libs/               # 共享库代码
 │   └── ...                 # 其他源码文件
 ├── .github/workflows/       # GitHub Actions 工作流
-│   ├── build-browser.yml   # 构建工作流
-│   ├── release-browser.yml # 发布工作流
-│   └── ...                 # 其他工作流
+│   └── build-and-release.yml  # 统一构建发布工作流
 ├── README.md               # 项目说明
 ├── TOTP_MODIFICATION_GUIDE.md      # 详细修改指南
 └── TOTP_UNLOCK_INSTALLATION_GUIDE.md  # 安装指南
