@@ -1,0 +1,11 @@
+{
+  "devFlags": {
+    "managedEnvironment": {
+      "base": "https://localhost:8080"
+    },
+    "skipWelcomeOnInstall": true
+  },
+  "flags": {
+    "accountSwitching": true
+  }
+}

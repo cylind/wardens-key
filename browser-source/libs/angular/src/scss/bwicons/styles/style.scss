@@ -1,0 +1,206 @@
+$icomoon-font-family: "bwi-font" !default;
+$icomoon-font-path: "~@bitwarden/angular/src/scss/bwicons/fonts/" !default;
+
+// New font sheet? Update the font-face information below
+@font-face {
+  font-family: "#{$icomoon-font-family}";
+  src:
+    url($icomoon-font-path + "bwi-font.svg") format("svg"),
+    url($icomoon-font-path + "bwi-font.ttf") format("truetype"),
+    url($icomoon-font-path + "bwi-font.woff") format("woff"),
+    url($icomoon-font-path + "bwi-font.woff2") format("woff2");
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+// Base Class
+.bwi {
+  /* use !important to prevent issues with browser extensions that change fonts */
+  font-family: "#{$icomoon-font-family}" !important;
+  speak: never;
+  font-style: normal;
+  font-weight: normal;
+  font-variant: normal;
+  text-transform: none;
+  line-height: 1;
+  display: inline-block;
+  /* Better Font Rendering */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+// Fixed Width Icons
+.bwi-fw {
+  width: calc(18em / 14);
+  text-align: center;
+}
+
+// Sizing Changes
+.bwi-sm {
+  font-size: 0.875em;
+}
+
+.bwi-lg {
+  font-size: calc(4em / 3);
+  line-height: calc(3em / 4);
+  vertical-align: -15%;
+}
+
+.bwi-2x {
+  font-size: 2em;
+}
+
+.bwi-3x {
+  font-size: 3em;
+}
+
+.bwi-4x {
+  font-size: 4em;
+}
+
+// Spin Animations
+.bwi-spin {
+  animation: bwi-spin 2s infinite linear;
+}
+
+@keyframes bwi-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(359deg);
+  }
+}
+
+// List Icons
+.bwi-ul {
+  padding-left: 0;
+  margin-left: calc(30em / 14);
+  list-style-type: none;
+  > li {
+    position: relative;
+  }
+}
+
+.bwi-li {
+  position: absolute;
+  left: calc(-30em / 14);
+  width: calc(30em / 14);
+  top: calc(2em / 14);
+  text-align: center;
+  &.bwi-lg {
+    left: calc(-30em / 14) + calc(4em / 14);
+  }
+}
+
+// Rotation
+.bwi-rotate-270 {
+  transform: rotate(270deg);
+}
+
+// For new icons - add their glyph name and value to the map below
+$icons: (
+  "angle-down": "\e900",
+  "angle-left": "\e901",
+  "angle-right": "\e902",
+  "angle-up": "\e903",
+  "bell": "\e904",
+  "billing": "\e905",
+  "bitcoin": "\e906",
+  "browser-alt": "\e907",
+  "browser": "\e908",
+  "brush": "\e909",
+  "bug": "\e90a",
+  "business": "\e90b",
+  "camera": "\e90c",
+  "check-circle": "\e90e",
+  "check": "\e90f",
+  "cli": "\e910",
+  "clock": "\e911",
+  "close": "\e912",
+  "cog-f": "\e913",
+  "cog": "\e914",
+  "collection": "\e915",
+  "collection-shared": "\e916",
+  "clone": "\e917",
+  "dollar": "\e919",
+  "down-solid": "\e91a",
+  "download": "\e91b",
+  "drag-and-drop": "\e91c",
+  "ellipsis-h": "\e91d",
+  "ellipsis-v": "\e91e",
+  "envelope": "\e91f",
+  "error": "\e920",
+  "exclamation-triangle": "\e921",
+  "external-link": "\e922",
+  "eye-slash": "\e923",
+  "eye": "\e924",
+  "family": "\e925",
+  "file-text": "\e926",
+  "file": "\e927",
+  "files": "\e928",
+  "filter": "\e929",
+  "folder": "\e92a",
+  "generate": "\e92b",
+  "globe": "\e92c",
+  "hashtag": "\e92d",
+  "id-card": "\e92e",
+  "info-circle": "\e92f",
+  "import": "\e930",
+  "key": "\e931",
+  "list-alt": "\e933",
+  "list": "\e934",
+  "lock-encrypted": "\e935",
+  "lock-f": "\e936",
+  "lock": "\e937",
+  "shield": "\e938",
+  "minus-circle": "\e939",
+  "mobile": "\e93a",
+  "msp": "\e93b",
+  "sticky-note": "\e93c",
+  "numbered-list": "\e93d",
+  "paperclip": "\e93e",
+  "passkey": "\e93f",
+  "pencil-square": "\e940",
+  "pencil": "\e941",
+  "plus-circle": "\e942",
+  "plus": "\e943",
+  "popout": "\e944",
+  "provider": "\e945",
+  "puzzle": "\e946",
+  "question-circle": "\e947",
+  "refresh": "\e948",
+  "search": "\e949",
+  "send": "\e94a",
+  "share": "\e94b",
+  "sign-in": "\e94c",
+  "sign-out": "\e94d",
+  "sliders": "\e94e",
+  "spinner": "\e94f",
+  "star-f": "\e950",
+  "star": "\e951",
+  "tag": "\e952",
+  "trash": "\e953",
+  "undo": "\e954",
+  "universal-access": "\e955",
+  "unlock": "\e956",
+  "up-down-btn": "\e957",
+  "up-solid": "\e958",
+  "user-monitor": "\e959",
+  "user": "\e95a",
+  "users": "\e95b",
+  "vault": "\e95c",
+  "wireless": "\e95d",
+  "wrench": "\e95e",
+  "paypal": "\e95f",
+  "credit-card": "\e9a2",
+  "desktop": "\e9a3",
+  "archive": "\e9c1",
+);
+
+@each $name, $glyph in $icons {
+  .bwi-#{$name}:before {
+    content: $glyph;
+  }
+}

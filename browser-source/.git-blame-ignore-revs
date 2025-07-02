@@ -1,0 +1,27 @@
+# Browser: Apply Prettier https://github.com/bitwarden/browser/pull/2238
+8fe821b9a3f9728bcb02d607ca75add468d380c1
+# Browser: Monorepository https://github.com/bitwarden/browser/pull/2531
+7fe51f83daa38df15a105f4a917abd01d94eddd1
+
+# Desktop: Apply Prettier https://github.com/bitwarden/desktop/pull/1202
+521feae535d83166e620c3c28dfc3e7b0314a00e
+# Browser: Monorepository https://github.com/bitwarden/clients/commit/7712ca6fa505c4b80b168258a7fc6a02c13160fd
+28bc4113b9bbae4dba2b5af14d460764fce79acf
+
+# CLI: Apply Prettier https://github.com/bitwarden/cli/pull/426
+910b4a24e649f21acbf4da5b2d422b121d514bd5
+# CLI: Monorepository https://github.com/bitwarden/clients/commit/980429f4bdcb178d8d92d8202cbdacfaa45c917e
+980429f4bdcb178d8d92d8202cbdacfaa45c917e
+
+# Web: Apply Prettier https://github.com/bitwarden/web/pull/1347
+56477eb39cfd8a73c9920577d24d75fed36e2cf5
+# Web: Monorepository https://github.com/bitwarden/clients/commit/02fe7159034b04d763a61fcf0200869e3209fa33
+02fe7159034b04d763a61fcf0200869e3209fa33
+
+# Jslib: Apply Prettier https://github.com/bitwarden/jslib/pull/581
+193434461dbd9c48fe5dcbad95693470aec422ac
+# Jslib: Monorepository https://github.com/bitwarden/clients/pull/2824/commits/d7492e3cf320410e74ebd0e0675ab994e64bd01a
+d7492e3cf320410e74ebd0e0675ab994e64bd01a
+
+# All Clients: Apply Prettier https://github.com/bitwarden/clients/pull/7014
+28de9439beb87133c8683434df952a0c0be94100
