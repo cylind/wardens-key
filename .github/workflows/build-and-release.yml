@@ -53,8 +53,14 @@ jobs:
       - name: Get Node Version
         id: node-version
         run: |
-          NODE_NVMRC=$(cat browser-source/.nvmrc)
-          NODE_VERSION=${NODE_NVMRC/v/''}
+          if [ -f "browser-source/.nvmrc" ]; then
+            NODE_NVMRC=$(cat browser-source/.nvmrc)
+            NODE_VERSION=${NODE_NVMRC/v/''}
+            echo "Found .nvmrc with version: $NODE_VERSION"
+          else
+            NODE_VERSION="20"
+            echo "No .nvmrc found, using default version: $NODE_VERSION"
+          fi
           echo "node_version=$NODE_VERSION" >> $GITHUB_OUTPUT
 
       - name: Check if should release
@@ -195,9 +201,24 @@ jobs:
           unzip browser-source.zip
           rm browser-source.zip
 
-      - name: NPM setup
+      - name: NPM setup (root)
         run: npm ci
         working-directory: browser-source-package/
+
+      - name: Fix script permissions and verify structure
+        run: |
+          echo "=== Checking directory structure ==="
+          ls -la browser-source-package/apps/browser/scripts/
+
+          echo "=== Setting script permissions ==="
+          chmod +x browser-source-package/apps/browser/scripts/compress.sh
+          chmod +x browser-source-package/apps/browser/scripts/package-safari.ps1
+
+          echo "=== Verifying permissions ==="
+          ls -la browser-source-package/apps/browser/scripts/
+
+          echo "=== Checking compress.sh content ==="
+          head -5 browser-source-package/apps/browser/scripts/compress.sh
 
       - name: Check source file size
         if: ${{ startsWith(matrix.name, 'firefox') }}
@@ -223,7 +244,14 @@ jobs:
           fi
 
       - name: Build extension
-        run: npm run ${{ matrix.npm_command }}
+        run: |
+          echo "=== Building ${{ matrix.name }} extension ==="
+          echo "Running command: npm run ${{ matrix.npm_command }}"
+          npm run ${{ matrix.npm_command }}
+
+          echo "=== Checking build output ==="
+          ls -la dist/ || echo "No dist directory found"
+          ls -la build/ || echo "No build directory found"
         working-directory: browser-source-package/apps/browser
 
       - name: Upload extension artifact
