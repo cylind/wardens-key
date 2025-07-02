@@ -484,11 +484,11 @@ export default class AutofillService implements AutofillServiceInterface {
         );
 
         // Skip getting the TOTP code for clipboard in these cases
+        // MODIFIED: Removed premium restriction for TOTP
         if (
           options.cipher.type !== CipherType.Login ||
           totp !== null ||
-          !options.cipher.login.totp ||
-          (!canAccessPremium && !options.cipher.organizationUseTotp)
+          !options.cipher.login.totp
         ) {
           return;
         }

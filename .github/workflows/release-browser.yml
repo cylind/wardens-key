@@ -1,5 +1,5 @@
-name: Release Browser
-run-name: Release Browser ${{ inputs.release_type }}
+name: Release Warden's Key Browser Extension
+run-name: Release Warden's Key ${{ inputs.release_type }}
 
 on:
   workflow_dispatch:
@@ -33,22 +33,18 @@ jobs:
       - name: Branch check
         if: ${{ github.event.inputs.release_type != 'Dry Run' }}
         run: |
-          if [[ "$GITHUB_REF" != "refs/heads/rc" ]] && [[ "$GITHUB_REF" != "refs/heads/hotfix-rc-browser" ]]; then
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
             echo "==================================="
-            echo "[!] Can only release from the 'rc' or 'hotfix-rc-browser' branches"
+            echo "[!] Can only release from the 'main' branch"
             echo "==================================="
             exit 1
           fi
 
       - name: Check Release Version
         id: version
-        uses: bitwarden/gh-actions/release-version-check@main
-        with:
-          release-type: ${{ github.event.inputs.release_type }}
-          project-type: ts
-          file: apps/browser/src/manifest.json
-          monorepo: true
-          monorepo-project: browser
+        run: |
+          VERSION=$(jq -r '.version' browser-source/apps/browser/src/manifest.json)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
 
   locales-test:
@@ -84,7 +80,7 @@ jobs:
           else
             echo "Test passed!"
           fi
-        working-directory: apps/browser
+        working-directory: browser-source/apps/browser
 
 
   release:

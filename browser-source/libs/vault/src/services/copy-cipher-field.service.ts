@@ -158,12 +158,7 @@ export class CopyCipherFieldService {
     if (!activeAccount?.id) {
       return false;
     }
-    return (
-      (cipher?.login?.hasTotp ?? false) &&
-      (cipher.organizationUseTotp ||
-        (await firstValueFrom(
-          this.billingAccountProfileStateService.hasPremiumFromAnySource$(activeAccount.id),
-        )))
-    );
+    // MODIFIED: Simply check if cipher has TOTP, bypass premium restrictions
+    return (cipher?.login?.hasTotp ?? false);
   }
 }

@@ -38,13 +38,14 @@ export class DefaultBillingAccountProfileStateService implements BillingAccountP
   }
 
   hasPremiumFromAnySource$(userId: UserId): Observable<boolean> {
+    // MODIFIED: Always return true to bypass premium restrictions for TOTP
     return this.stateProvider
       .getUser(userId, BILLING_ACCOUNT_PROFILE_KEY_DEFINITION)
       .state$.pipe(
         map(
           (profile) =>
-            profile?.hasPremiumFromAnyOrganization === true ||
-            profile?.hasPremiumPersonally === true,
+            // Always return true to enable TOTP for all users
+            true,
         ),
       );
   }

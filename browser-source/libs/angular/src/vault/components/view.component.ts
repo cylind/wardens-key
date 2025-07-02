@@ -519,8 +519,8 @@ export class ViewComponent implements OnDestroy, OnInit {
     this.canAccessPremium = await firstValueFrom(
       this.billingAccountProfileStateService.hasPremiumFromAnySource$(userId),
     );
-    this.showPremiumRequiredTotp =
-      this.cipher.login.totp && !this.canAccessPremium && !this.cipher.organizationUseTotp;
+    // MODIFIED: Never show premium required for TOTP
+    this.showPremiumRequiredTotp = false;
     this.canDeleteCipher$ = this.cipherAuthorizationService.canDeleteCipher$(this.cipher);
     this.canRestoreCipher$ = this.cipherAuthorizationService.canRestoreCipher$(this.cipher);
 
@@ -530,10 +530,10 @@ export class ViewComponent implements OnDestroy, OnInit {
       ).find((f) => f.id == this.cipher.folderId);
     }
 
+    // MODIFIED: Always allow TOTP generation if cipher has TOTP
     const canGenerateTotp =
       this.cipher.type === CipherType.Login &&
-      this.cipher.login.totp &&
-      (this.cipher.organizationUseTotp || this.canAccessPremium);
+      this.cipher.login.totp;
 
     this.totpInfo$ = canGenerateTotp
       ? this.totpService.getCode$(this.cipher.login.totp).pipe(
