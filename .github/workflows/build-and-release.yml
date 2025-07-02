@@ -206,12 +206,26 @@ jobs:
       - name: Download browser source
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
-          name: browser-source-${{ env._BUILD_NUMBER }}.zip
+          name: browser-source-${{ env._BUILD_NUMBER }}
 
       - name: Unzip browser source artifact
         run: |
-          unzip browser-source.zip
-          rm browser-source.zip
+          echo "=== Checking downloaded browser source ==="
+          ls -la
+
+          if [[ -f "browser-source.zip" ]]; then
+            echo "Found browser-source.zip directly"
+            unzip browser-source.zip
+            rm browser-source.zip
+          elif [[ -f "browser-source-${{ env._BUILD_NUMBER }}/browser-source.zip" ]]; then
+            echo "Found browser-source.zip in directory"
+            unzip "browser-source-${{ env._BUILD_NUMBER }}/browser-source.zip"
+          else
+            echo "❌ browser-source.zip not found"
+            echo "Available files:"
+            find . -name "*.zip" -type f
+            exit 1
+          fi
 
       - name: NPM setup (root)
         run: npm ci
