@@ -269,7 +269,7 @@ jobs:
       - name: Upload extension artifact
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
-          name: ${{ matrix.artifact_name }}-${{ env._BUILD_NUMBER }}.zip
+          name: ${{ matrix.artifact_name }}-${{ env._BUILD_NUMBER }}
           path: browser-source-package/apps/browser/dist/${{ matrix.archive_name }}
           if-no-files-found: error
 
@@ -297,7 +297,7 @@ jobs:
       - name: Download all build artifacts
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
-          pattern: '*-${{ env._BUILD_NUMBER }}.zip'
+          pattern: '*-${{ env._BUILD_NUMBER }}'
           merge-multiple: true
 
       - name: Debug downloaded artifacts
@@ -321,27 +321,38 @@ jobs:
 
           # Find and rename extension artifacts
           echo "Looking for extension artifacts..."
-          for file in *-${{ env._BUILD_NUMBER }}.zip; do
-            if [[ -f "$file" && "$file" != "browser-source-${{ env._BUILD_NUMBER }}.zip" ]]; then
-              echo "Processing: $file"
+          echo "Current directory contents:"
+          ls -la
 
-              # Extract browser name more carefully
-              if [[ "$file" =~ dist-chrome-MV3-.* ]]; then
-                browser_name="chrome"
-              elif [[ "$file" =~ dist-firefox-.* ]]; then
-                browser_name="firefox"
-              elif [[ "$file" =~ dist-edge-MV3-.* ]]; then
-                browser_name="edge"
-              elif [[ "$file" =~ dist-opera-MV3-.* ]]; then
-                browser_name="opera"
-              else
-                # Fallback: extract from filename
-                browser_name=$(echo "$file" | sed 's/dist-\(.*\)-MV3-.*/\1/' | sed 's/dist-\(.*\)-.*/\1/')
-              fi
+          # Look for downloaded artifact directories
+          for dir in dist-*-${{ env._BUILD_NUMBER }}; do
+            if [[ -d "$dir" ]]; then
+              echo "Processing directory: $dir"
 
-              new_name="wardens-key-${browser_name}-${{ env._VERSION }}.zip"
-              mv "$file" "$new_name"
-              echo "✅ Renamed $file to $new_name"
+              # Find zip files in the directory
+              for zipfile in "$dir"/*.zip; do
+                if [[ -f "$zipfile" ]]; then
+                  echo "Found zip file: $zipfile"
+
+                  # Extract browser name from directory name
+                  if [[ "$dir" =~ dist-chrome-MV3-.* ]]; then
+                    browser_name="chrome"
+                  elif [[ "$dir" =~ dist-firefox-.* ]]; then
+                    browser_name="firefox"
+                  elif [[ "$dir" =~ dist-edge-MV3-.* ]]; then
+                    browser_name="edge"
+                  elif [[ "$dir" =~ dist-opera-MV3-.* ]]; then
+                    browser_name="opera"
+                  else
+                    # Fallback: extract from directory name
+                    browser_name=$(echo "$dir" | sed 's/dist-\(.*\)-MV3-.*/\1/' | sed 's/dist-\(.*\)-.*/\1/')
+                  fi
+
+                  new_name="wardens-key-${browser_name}-${{ env._VERSION }}.zip"
+                  cp "$zipfile" "$new_name"
+                  echo "✅ Created $new_name from $zipfile"
+                fi
+              done
             fi
           done
 
@@ -352,8 +363,6 @@ jobs:
         id: release-notes
         run: |
           cat > release_notes.md << 'EOF'
-          # Warden's Key v${{ env._VERSION }}
-
           🔓 **TOTP 功能完全解锁版本**
 
           ## 🎯 主要特性
