@@ -322,7 +322,7 @@ jobs:
 
       - name: Cache browser source
         if: steps.version-compare.outputs.should_continue == 'true'
-        uses: actions/cache@6849a6489940f00c2f30c0fb92c6274307ccb58a # v4.1.2
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
           path: browser-source
           key: browser-source-${{ steps.get-remote-version.outputs.remote_version }}-${{ hashFiles('hasPremiumFromAnySource.patch') }}
@@ -339,7 +339,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Restore browser source from cache
-        uses: actions/cache@6849a6489940f00c2f30c0fb92c6274307ccb58a # v4.1.2
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
           path: browser-source
           key: browser-source-${{ needs.version-check.outputs.remote_version }}-${{ hashFiles('hasPremiumFromAnySource.patch') }}
@@ -397,7 +397,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Restore browser source from cache
-        uses: actions/cache@6849a6489940f00c2f30c0fb92c6274307ccb58a # v4.1.2
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
           path: browser-source
           key: browser-source-${{ env._REMOTE_VERSION }}-${{ hashFiles('hasPremiumFromAnySource.patch') }}
@@ -479,7 +479,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Restore browser source from cache
-        uses: actions/cache@6849a6489940f00c2f30c0fb92c6274307ccb58a # v4.1.2
+        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         with:
           path: browser-source
           key: browser-source-${{ env._REMOTE_VERSION }}-${{ hashFiles('hasPremiumFromAnySource.patch') }}
