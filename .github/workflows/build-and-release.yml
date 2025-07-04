@@ -92,31 +92,59 @@ jobs:
           echo "=== Version Comparison ==="
           echo "Remote version: ${{ steps.get-remote-version.outputs.remote_version }}"
           echo "Local version: ${{ steps.get-local-version.outputs.local_version }}"
+          # Function to compare semantic versions
           version_compare() {
-            local v1=$1; local v2=$2
-            IFS='.' read -ra V1 <<< "$v1"; IFS='.' read -ra V2 <<< "$v2"
+            local v1=$1
+            local v2=$2
+
+            # Split versions into arrays
+            IFS='.' read -ra V1 <<< "$v1"
+            IFS='.' read -ra V2 <<< "$v2"
+
+            # Pad arrays to same length
             while [[ ${#V1[@]} -lt ${#V2[@]} ]]; do V1+=("0"); done
             while [[ ${#V2[@]} -lt ${#V1[@]} ]]; do V2+=("0"); done
+
+            # Compare each part
             for i in "${!V1[@]}"; do
-              if [[ ${V1[i]} -gt ${V2[i]} ]]; then return 1; fi
-              if [[ ${V1[i]} -lt ${V2[i]} ]]; then return 2; fi
+              # Check if parts are integers
+              if ! [[ "${V1[i]}" =~ ^[0-9]+$ && "${V2[i]}" =~ ^[0-9]+$ ]]; then
+                echo "Error: Non-integer version part found. V1[i]=${V1[i]}, V2[i]=${V2[i]}"
+                return 3 # Error code
+              fi
+
+              if [[ ${V1[i]} -gt ${V2[i]} ]]; then
+                return 1  # v1 > v2
+              elif [[ ${V1[i]} -lt ${V2[i]} ]]; then
+                return 2  # v1 < v2
+              fi
             done
-            return 0
+            return 0  # v1 == v2
           }
+
           should_continue=false
+
+          # Check if force build is enabled
           if [[ "${{ inputs.force_build }}" == "true" ]]; then
             echo "✅ Force build enabled, continuing..."
             should_continue=true
           else
+            # Compare versions
             version_compare "${{ steps.get-remote-version.outputs.remote_version }}" "${{ steps.get-local-version.outputs.local_version }}"
             result=$?
+
             if [[ $result -eq 1 ]]; then
               echo "✅ Remote version is newer, continuing build..."
               should_continue=true
             elif [[ $result -eq 0 ]]; then
               echo "⚠️ Versions are equal, skipping build unless forced"
-            else
+              should_continue=false
+            elif [[ $result -eq 2 ]]; then
               echo "ℹ️ Local version is newer, skipping build"
+              should_continue=false
+            else
+              echo "❌ Error during version comparison. Exit code: $result"
+              exit 1
             fi
           fi
           echo "Decision: should_continue=$should_continue"
