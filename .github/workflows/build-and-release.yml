@@ -48,6 +48,7 @@ jobs:
       build_number: ${{ steps.version-info.outputs.build_number }}
       node_version: ${{ steps.node-version.outputs.node_version }}
       should_release: ${{ steps.release-check.outputs.should_release }}
+      source_path: ${{ steps.prepare-source.outputs.source_path }}
     steps:
       - name: Check out repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -58,19 +59,13 @@ jobs:
         id: get-remote-version
         run: |
           echo "=== Fetching latest browser version from bitwarden/clients ==="
-
-          # Get latest browser release tag
           REMOTE_TAG=$(curl -s "https://api.github.com/repos/bitwarden/clients/releases" | \
             jq -r '[.[] | select(.tag_name | startswith("browser-v")) | .tag_name] | sort_by(. | sub("browser-v"; "") | split(".") | map(tonumber)) | last')
-
           if [[ "$REMOTE_TAG" == "null" || -z "$REMOTE_TAG" ]]; then
             echo "❌ Failed to get remote version"
             exit 1
           fi
-
-          # Extract version number (remove browser-v prefix)
           REMOTE_VERSION=${REMOTE_TAG#browser-v}
-
           echo "Latest remote browser tag: $REMOTE_TAG"
           echo "Latest remote version: $REMOTE_VERSION"
           echo "remote_tag=$REMOTE_TAG" >> $GITHUB_OUTPUT
@@ -80,21 +75,15 @@ jobs:
         id: get-local-version
         run: |
           echo "=== Getting local latest version ==="
-
-          # Get latest local browser-v tag
           LOCAL_TAG=$(git tag -l "browser-v*" | sort -V | tail -n1)
-
           if [[ -z "$LOCAL_TAG" ]]; then
             echo "No local browser-v tags found, treating as first run"
             LOCAL_VERSION="0.0.0"
-            LOCAL_TAG="browser-v0.0.0"
           else
             LOCAL_VERSION=${LOCAL_TAG#browser-v}
           fi
-
-          echo "Latest local tag: $LOCAL_TAG"
+          echo "Latest local tag: ${LOCAL_TAG:-none}"
           echo "Latest local version: $LOCAL_VERSION"
-          echo "local_tag=$LOCAL_TAG" >> $GITHUB_OUTPUT
           echo "local_version=$LOCAL_VERSION" >> $GITHUB_OUTPUT
 
       - name: Compare versions
@@ -103,186 +92,64 @@ jobs:
           echo "=== Version Comparison ==="
           echo "Remote version: ${{ steps.get-remote-version.outputs.remote_version }}"
           echo "Local version: ${{ steps.get-local-version.outputs.local_version }}"
-
-          # Function to compare semantic versions
           version_compare() {
-            local v1=$1
-            local v2=$2
-
-            # Split versions into arrays
-            IFS='.' read -ra V1 <<< "$v1"
-            IFS='.' read -ra V2 <<< "$v2"
-
-            # Pad arrays to same length
+            local v1=$1; local v2=$2
+            IFS='.' read -ra V1 <<< "$v1"; IFS='.' read -ra V2 <<< "$v2"
             while [[ ${#V1[@]} -lt ${#V2[@]} ]]; do V1+=("0"); done
             while [[ ${#V2[@]} -lt ${#V1[@]} ]]; do V2+=("0"); done
-
-            # Compare each part
             for i in "${!V1[@]}"; do
-              if [[ ${V1[i]} -gt ${V2[i]} ]]; then
-                return 1  # v1 > v2
-              elif [[ ${V1[i]} -lt ${V2[i]} ]]; then
-                return 2  # v1 < v2
-              fi
+              if [[ ${V1[i]} -gt ${V2[i]} ]]; then return 1; fi
+              if [[ ${V1[i]} -lt ${V2[i]} ]]; then return 2; fi
             done
-            return 0  # v1 == v2
+            return 0
           }
-
           should_continue=false
-
-          # Check if force build is enabled
           if [[ "${{ inputs.force_build }}" == "true" ]]; then
             echo "✅ Force build enabled, continuing..."
             should_continue=true
           else
-            # Compare versions
             version_compare "${{ steps.get-remote-version.outputs.remote_version }}" "${{ steps.get-local-version.outputs.local_version }}"
             result=$?
-
             if [[ $result -eq 1 ]]; then
               echo "✅ Remote version is newer, continuing build..."
               should_continue=true
             elif [[ $result -eq 0 ]]; then
               echo "⚠️ Versions are equal, skipping build unless forced"
-              should_continue=false
             else
               echo "ℹ️ Local version is newer, skipping build"
-              should_continue=false
             fi
           fi
-
           echo "Decision: should_continue=$should_continue"
           echo "should_continue=$should_continue" >> $GITHUB_OUTPUT
 
-      - name: Download browser source
+      - name: Prepare browser source
         if: steps.version-compare.outputs.should_continue == 'true'
-        id: download-source
-        run: |
-          echo "=== Downloading browser source ==="
+        id: prepare-source
+        uses: ./.github/actions/setup-source
+        with:
+          remote_version: ${{ steps.get-remote-version.outputs.remote_version }}
+          remote_tag: ${{ steps.get-remote-version.outputs.remote_tag }}
 
-          REMOTE_VERSION="${{ steps.get-remote-version.outputs.remote_version }}"
-          REMOTE_TAG="${{ steps.get-remote-version.outputs.remote_tag }}"
-          DOWNLOAD_URL="https://github.com/bitwarden/clients/releases/download/${REMOTE_TAG}/browser-source-${REMOTE_VERSION}.zip"
-
-          echo "Download URL: $DOWNLOAD_URL"
-
-          # Download with retry mechanism
-          for i in {1..3}; do
-            echo "Download attempt $i/3..."
-            if curl -L -f -o browser-source.zip "$DOWNLOAD_URL"; then
-              echo "✅ Download successful"
-              break
-            else
-              echo "❌ Download attempt $i failed"
-              if [[ $i -eq 3 ]]; then
-                echo "❌ All download attempts failed"
-                exit 1
-              fi
-              sleep 5
-            fi
-          done
-
-          # Verify download
-          if [[ ! -f "browser-source.zip" ]]; then
-            echo "❌ Downloaded file not found"
-            exit 1
-          fi
-
-          FILE_SIZE=$(stat -c%s browser-source.zip)
-          echo "Downloaded file size: $FILE_SIZE bytes"
-
-          if [[ $FILE_SIZE -lt 1000000 ]]; then
-            echo "❌ Downloaded file seems too small (< 1MB)"
-            exit 1
-          fi
-
-          echo "✅ Download verification passed"
-
-      - name: Extract and verify source
-        if: steps.version-compare.outputs.should_continue == 'true'
-        id: extract-source
-        run: |
-          echo "=== Extracting browser source ==="
-
-          # Extract the zip file
-          unzip -q browser-source.zip
-
-          # Verify directory structure
-          if [[ ! -d "browser-source" ]]; then
-            echo "❌ browser-source directory not found after extraction"
-            echo "Available directories:"
-            ls -la
-            exit 1
-          fi
-
-          # Check key files
-          REQUIRED_FILES=(
-            "browser-source/apps/browser/src/manifest.json"
-            "browser-source/package.json"
-            "browser-source/.nvmrc"
-          )
-
-          for file in "${REQUIRED_FILES[@]}"; do
-            if [[ ! -f "$file" ]]; then
-              echo "❌ Required file not found: $file"
-              exit 1
-            fi
-          done
-
-          echo "✅ Source extraction and verification completed"
-
-      - name: Apply patch
-        if: steps.version-compare.outputs.should_continue == 'true'
-        id: apply-patch
-        run: |
-          echo "=== Applying TOTP unlock patch ==="
-
-          # Verify patch file exists
-          if [[ ! -f "hasPremiumFromAnySource.patch" ]]; then
-            echo "❌ Patch file not found"
-            exit 1
-          fi
-
-          # Apply patch
-          cd browser-source
-          if patch -p1 < ../hasPremiumFromAnySource.patch; then
-            echo "✅ Patch applied successfully"
-          else
-            echo "❌ Patch application failed"
-            echo "Checking if patch is already applied..."
-
-            # Check if the modification already exists
-            if grep -q "Always return true to enable TOTP for all users" libs/common/src/billing/services/account/billing-account-profile-state.service.ts; then
-              echo "✅ Patch appears to be already applied"
-            else
-              echo "❌ Patch failed and modification not found"
-              exit 1
-            fi
-          fi
-
-          echo "✅ Patch processing completed"
-
-      - name: Get version info from downloaded source
+      - name: Get version info from source
         if: steps.version-compare.outputs.should_continue == 'true'
         id: version-info
         run: |
-          echo "=== Getting version info from downloaded source ==="
-
-          VERSION=$(jq -r '.version' browser-source/apps/browser/src/manifest.json)
+          echo "=== Getting version info from source ==="
+          SOURCE_PATH="${{ steps.prepare-source.outputs.source_path }}"
+          VERSION=$(jq -r '.version' $SOURCE_PATH/apps/browser/src/manifest.json)
           BUILD_NUMBER=${GITHUB_SHA:0:7}
-
           echo "Manifest version: $VERSION"
           echo "Build number: $BUILD_NUMBER"
-
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "build_number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
 
-      - name: Get Node Version
+      - name: Get Node Version from source
         if: steps.version-compare.outputs.should_continue == 'true'
         id: node-version
         run: |
-          if [ -f "browser-source/.nvmrc" ]; then
-            NODE_NVMRC=$(cat browser-source/.nvmrc)
+          SOURCE_PATH="${{ steps.prepare-source.outputs.source_path }}"
+          if [ -f "$SOURCE_PATH/.nvmrc" ]; then
+            NODE_NVMRC=$(cat $SOURCE_PATH/.nvmrc)
             NODE_VERSION=${NODE_NVMRC/v/''}
             echo "Found .nvmrc with version: $NODE_VERSION"
           else
@@ -299,7 +166,6 @@ jobs:
           echo "Event name: ${{ github.event_name }}"
           echo "Ref: ${{ github.ref }}"
           echo "Create release input: ${{ inputs.create_release }}"
-
           should_release=false
           if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
             echo "✅ Condition met: Push to main branch"
@@ -316,18 +182,16 @@ jobs:
           else
             echo "❌ No release conditions met"
           fi
-
           echo "Final decision: should_release=$should_release"
           echo "should_release=$should_release" >> $GITHUB_OUTPUT
 
-      - name: Cache browser source
+      - name: Upload Patched Source Artifact
         if: steps.version-compare.outputs.should_continue == 'true'
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
-          path: browser-source
-          key: browser-source-${{ steps.get-remote-version.outputs.remote_version }}-${{ hashFiles('hasPremiumFromAnySource.patch') }}
-          restore-keys: |
-            browser-source-${{ steps.get-remote-version.outputs.remote_version }}-
+          name: browser-source
+          path: ${{ steps.prepare-source.outputs.source_path }}
+          if-no-files-found: error
 
   locales-test:
     name: Locales Test
@@ -335,34 +199,15 @@ jobs:
     needs: version-check
     if: needs.version-check.outputs.should_continue == 'true'
     steps:
-      - name: Check out repo
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
-      - name: Restore browser source from cache
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+      - name: Download browser source artifact
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
+          name: browser-source
           path: browser-source
-          key: browser-source-${{ needs.version-check.outputs.remote_version }}-${{ hashFiles('hasPremiumFromAnySource.patch') }}
-          restore-keys: |
-            browser-source-${{ needs.version-check.outputs.remote_version }}-
-
-      - name: Re-download source if cache miss
-        if: steps.cache-restore.outputs.cache-hit != 'true'
-        run: |
-          echo "=== Cache miss, re-downloading source ==="
-
-          REMOTE_VERSION="${{ needs.version-check.outputs.remote_version }}"
-          REMOTE_TAG="browser-v${REMOTE_VERSION}"
-          DOWNLOAD_URL="https://github.com/bitwarden/clients/releases/download/${REMOTE_TAG}/browser-source-${REMOTE_VERSION}.zip"
-
-          curl -L -f -o browser-source.zip "$DOWNLOAD_URL"
-          unzip -q browser-source.zip
-          cd browser-source && patch -p1 < ../hasPremiumFromAnySource.patch
 
       - name: Testing locales - extName length
         run: |
          found_error=false
-
          echo "Locales Test"
          echo "============"
          echo "extName string must be 40 characters or less"
@@ -374,7 +219,6 @@ jobs:
              found_error=true
            fi
          done
-
          if $found_error; then
            echo
            echo "Please fix 'extName' for the locales listed above."
@@ -383,78 +227,14 @@ jobs:
            echo "Test passed!"
          fi
 
-  build-source:
-    name: Build browser source
+  build:
+    name: Build Extensions
     runs-on: ubuntu-22.04
     needs: [version-check, locales-test]
     if: needs.version-check.outputs.should_continue == 'true'
     env:
       _BUILD_NUMBER: ${{ needs.version-check.outputs.build_number }}
       _NODE_VERSION: ${{ needs.version-check.outputs.node_version }}
-      _REMOTE_VERSION: ${{ needs.version-check.outputs.remote_version }}
-    steps:
-      - name: Check out repo
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
-      - name: Restore browser source from cache
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
-        with:
-          path: browser-source
-          key: browser-source-${{ env._REMOTE_VERSION }}-${{ hashFiles('hasPremiumFromAnySource.patch') }}
-          restore-keys: |
-            browser-source-${{ env._REMOTE_VERSION }}-
-
-      - name: Re-download source if cache miss
-        if: steps.cache-restore.outputs.cache-hit != 'true'
-        run: |
-          echo "=== Cache miss, re-downloading source ==="
-
-          REMOTE_TAG="browser-v${{ env._REMOTE_VERSION }}"
-          DOWNLOAD_URL="https://github.com/bitwarden/clients/releases/download/${REMOTE_TAG}/browser-source-${{ env._REMOTE_VERSION }}.zip"
-
-          curl -L -f -o browser-source.zip "$DOWNLOAD_URL"
-          unzip -q browser-source.zip
-          cd browser-source && patch -p1 < ../hasPremiumFromAnySource.patch
-
-      - name: Set up Node
-        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
-        with:
-          cache: 'npm'
-          cache-dependency-path: '**/package-lock.json'
-          node-version: ${{ env._NODE_VERSION }}
-
-      - name: Print environment
-        run: |
-          node --version
-          npm --version
-
-      - name: Build sources for reviewers
-        run: |
-          # Create a copy of browser-source for packaging
-          cp -r browser-source browser-source-package
-
-          # Remove .git directory if it exists
-          rm -rf browser-source-package/.git
-
-          # Create zip package
-          zip -r browser-source.zip browser-source-package
-
-      - name: Upload browser source
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
-        with:
-          name: browser-source-${{ env._BUILD_NUMBER }}
-          path: browser-source.zip
-          if-no-files-found: error
-
-  build:
-    name: Build Extensions
-    runs-on: ubuntu-22.04
-    needs: [version-check, locales-test, build-source]
-    if: needs.version-check.outputs.should_continue == 'true'
-    env:
-      _BUILD_NUMBER: ${{ needs.version-check.outputs.build_number }}
-      _NODE_VERSION: ${{ needs.version-check.outputs.node_version }}
-      _REMOTE_VERSION: ${{ needs.version-check.outputs.remote_version }}
     strategy:
       matrix:
         include:
@@ -475,29 +255,6 @@ jobs:
             archive_name: "dist-opera.zip"
             artifact_name: "dist-opera-MV3"
     steps:
-      - name: Check out repo
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
-      - name: Restore browser source from cache
-        uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
-        with:
-          path: browser-source
-          key: browser-source-${{ env._REMOTE_VERSION }}-${{ hashFiles('hasPremiumFromAnySource.patch') }}
-          restore-keys: |
-            browser-source-${{ env._REMOTE_VERSION }}-
-
-      - name: Re-download source if cache miss
-        if: steps.cache-restore.outputs.cache-hit != 'true'
-        run: |
-          echo "=== Cache miss, re-downloading source ==="
-
-          REMOTE_TAG="browser-v${{ env._REMOTE_VERSION }}"
-          DOWNLOAD_URL="https://github.com/bitwarden/clients/releases/download/${REMOTE_TAG}/browser-source-${{ env._REMOTE_VERSION }}.zip"
-
-          curl -L -f -o browser-source.zip "$DOWNLOAD_URL"
-          unzip -q browser-source.zip
-          cd browser-source && patch -p1 < ../hasPremiumFromAnySource.patch
-
       - name: Set up Node
         uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
@@ -510,80 +267,34 @@ jobs:
           node --version
           npm --version
 
-      - name: Download browser source artifact (fallback)
-        if: steps.cache-restore.outputs.cache-hit != 'true'
+      - name: Download browser source artifact
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
-          name: browser-source-${{ env._BUILD_NUMBER }}
-
-      - name: Unzip browser source artifact (fallback)
-        if: steps.cache-restore.outputs.cache-hit != 'true'
-        run: |
-          echo "=== Checking downloaded browser source ==="
-          ls -la
-
-          if [[ -f "browser-source.zip" ]]; then
-            echo "Found browser-source.zip directly"
-            unzip browser-source.zip
-            rm browser-source.zip
-          elif [[ -f "browser-source-${{ env._BUILD_NUMBER }}/browser-source.zip" ]]; then
-            echo "Found browser-source.zip in directory"
-            unzip "browser-source-${{ env._BUILD_NUMBER }}/browser-source.zip"
-          else
-            echo "❌ browser-source.zip not found"
-            echo "Available files:"
-            find . -name "*.zip" -type f
-            exit 1
-          fi
-
-      - name: Determine source directory
-        id: source-dir
-        run: |
-          if [[ -d "browser-source" ]]; then
-            echo "Using browser-source directory"
-            echo "source_dir=browser-source" >> $GITHUB_OUTPUT
-          elif [[ -d "browser-source-package" ]]; then
-            echo "Using browser-source-package directory"
-            echo "source_dir=browser-source-package" >> $GITHUB_OUTPUT
-          else
-            echo "❌ No source directory found"
-            ls -la
-            exit 1
-          fi
+          name: browser-source
+          path: browser-source
 
       - name: NPM setup (root)
         run: npm ci
-        working-directory: ${{ steps.source-dir.outputs.source_dir }}/
+        working-directory: browser-source/
 
-      - name: Fix script permissions and verify structure
+      - name: Fix script permissions
         run: |
-          SOURCE_DIR="${{ steps.source-dir.outputs.source_dir }}"
-          echo "=== Checking directory structure ==="
-          ls -la $SOURCE_DIR/apps/browser/scripts/
-
           echo "=== Setting script permissions ==="
-          chmod +x $SOURCE_DIR/apps/browser/scripts/compress.sh
-          chmod +x $SOURCE_DIR/apps/browser/scripts/package-safari.ps1
-
+          chmod +x browser-source/apps/browser/scripts/compress.sh
+          chmod +x browser-source/apps/browser/scripts/package-safari.ps1
           echo "=== Verifying permissions ==="
-          ls -la $SOURCE_DIR/apps/browser/scripts/
-
-          echo "=== Checking compress.sh content ==="
-          head -5 $SOURCE_DIR/apps/browser/scripts/compress.sh
+          ls -la browser-source/apps/browser/scripts/
 
       - name: Check source file size
         if: ${{ startsWith(matrix.name, 'firefox') }}
         run: |
-          SOURCE_DIR="${{ steps.source-dir.outputs.source_dir }}"
           # Declare variable as indexed array
           declare -a FILES
-
           # Search for source files that are greater than 4M
-          TARGET_DIR="./$SOURCE_DIR/apps/browser"
+          TARGET_DIR="./browser-source/apps/browser"
           while IFS=' ' read -r RESULT; do
               FILES+=("$RESULT")
           done < <(find $TARGET_DIR -size +4M)
-
           # Validate results and provide messaging
           if [[ ${#FILES[@]} -ne 0 ]]; then
               echo "File(s) exceeds size limit: 4MB"
@@ -600,17 +311,15 @@ jobs:
           echo "=== Building ${{ matrix.name }} extension ==="
           echo "Running command: npm run ${{ matrix.npm_command }}"
           npm run ${{ matrix.npm_command }}
-
           echo "=== Checking build output ==="
           ls -la dist/ || echo "No dist directory found"
-          ls -la build/ || echo "No build directory found"
-        working-directory: ${{ steps.source-dir.outputs.source_dir }}/apps/browser
+        working-directory: browser-source/apps/browser
 
       - name: Upload extension artifact
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
           name: ${{ matrix.artifact_name }}-${{ env._BUILD_NUMBER }}
-          path: ${{ steps.source-dir.outputs.source_dir }}/apps/browser/dist/${{ matrix.archive_name }}
+          path: browser-source/apps/browser/dist/${{ matrix.archive_name }}
           if-no-files-found: error
 
   create-tag:
@@ -629,20 +338,12 @@ jobs:
       - name: Create and push version tag
         run: |
           echo "=== Creating version tag ==="
-
           NEW_TAG="browser-v${{ env._REMOTE_VERSION }}"
           echo "Creating tag: $NEW_TAG"
-
-          # Configure git
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Create tag
           git tag -a "$NEW_TAG" -m "Release browser-v${{ env._REMOTE_VERSION }} - TOTP Unlocked Version"
-
-          # Push tag
           git push origin "$NEW_TAG"
-
           echo "✅ Tag created and pushed: $NEW_TAG"
 
   release:
@@ -654,80 +355,15 @@ jobs:
       _REMOTE_VERSION: ${{ needs.version-check.outputs.remote_version }}
       _BUILD_NUMBER: ${{ needs.version-check.outputs.build_number }}
     steps:
-      - name: Debug release info
-        run: |
-          echo "=== Release Debug Info ==="
-          echo "Should release: ${{ needs.version-check.outputs.should_release }}"
-          echo "Remote version: ${{ needs.version-check.outputs.remote_version }}"
-          echo "Build number: ${{ needs.version-check.outputs.build_number }}"
-          echo "Event: ${{ github.event_name }}"
-          echo "Ref: ${{ github.ref }}"
-
-      - name: Check out repo
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
       - name: Download all build artifacts
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
         with:
-          pattern: '*-${{ env._BUILD_NUMBER }}'
-          merge-multiple: true
+          path: release-artifacts
 
-      - name: Debug downloaded artifacts
+      - name: List downloaded artifacts
         run: |
           echo "=== Downloaded artifacts ==="
-          ls -la *.zip || echo "No zip files found"
-          echo "=== All files ==="
-          ls -la
-
-      - name: Rename build artifacts
-        run: |
-          echo "=== Renaming artifacts ==="
-
-          # Rename browser source if it exists (check both direct file and in directory)
-          if [[ -f "browser-source.zip" ]]; then
-            mv browser-source.zip wardens-key-browser-source-${{ env._REMOTE_VERSION }}.zip
-            echo "✅ Renamed browser-source.zip"
-          elif [[ -f "browser-source-${{ env._BUILD_NUMBER }}/browser-source.zip" ]]; then
-            mv "browser-source-${{ env._BUILD_NUMBER }}/browser-source.zip" wardens-key-browser-source-${{ env._REMOTE_VERSION }}.zip
-            echo "✅ Renamed browser-source.zip from directory"
-          else
-            echo "❌ browser-source.zip not found"
-            echo "Looking for browser-source artifacts:"
-            ls -la browser-source-* || echo "No browser-source artifacts found"
-          fi
-
-          # Find and rename extension artifacts (they are direct zip files)
-          echo "Looking for extension artifacts..."
-          echo "Current directory contents:"
-          ls -la *.zip || echo "No zip files found"
-
-          # Process each browser extension zip file
-          for zipfile in dist-*.zip; do
-            if [[ -f "$zipfile" ]]; then
-              echo "Processing: $zipfile"
-
-              # Extract browser name from filename
-              if [[ "$zipfile" == "dist-chrome.zip" ]]; then
-                browser_name="chrome"
-              elif [[ "$zipfile" == "dist-firefox.zip" ]]; then
-                browser_name="firefox"
-              elif [[ "$zipfile" == "dist-edge.zip" ]]; then
-                browser_name="edge"
-              elif [[ "$zipfile" == "dist-opera.zip" ]]; then
-                browser_name="opera"
-              else
-                # Fallback: extract from filename
-                browser_name=$(echo "$zipfile" | sed 's/dist-\(.*\)\.zip/\1/')
-              fi
-
-              new_name="wardens-key-${browser_name}-${{ env._REMOTE_VERSION }}.zip"
-              mv "$zipfile" "$new_name"
-              echo "✅ Renamed $zipfile to $new_name"
-            fi
-          done
-
-          echo "=== Final artifact list ==="
-          ls -la wardens-key-*.zip || echo "No wardens-key artifacts found"
+          ls -laR release-artifacts
 
       - name: Generate release notes
         id: release-notes
@@ -744,13 +380,13 @@ jobs:
           - ✅ **自动更新**：基于官方最新版本 v${{ env._REMOTE_VERSION }} 构建
 
           ## 📦 下载说明
-          请根据您的浏览器选择对应的扩展包：
+          请根据您的浏览器选择对应的扩展包（文件名包含版本号和构建号）。
 
-          - **Chrome**: \`wardens-key-chrome-${{ env._REMOTE_VERSION }}.zip\`
-          - **Firefox**: \`wardens-key-firefox-${{ env._REMOTE_VERSION }}.zip\`
-          - **Edge**: \`wardens-key-edge-${{ env._REMOTE_VERSION }}.zip\`
-          - **Opera**: \`wardens-key-opera-${{ env._REMOTE_VERSION }}.zip\`
-          - **源码包**: \`wardens-key-browser-source-${{ env._REMOTE_VERSION }}.zip\`
+          - **Chrome**: \`dist-chrome-MV3-*.zip\`
+          - **Firefox**: \`dist-firefox-*.zip\`
+          - **Edge**: \`dist-edge-MV3-*.zip\`
+          - **Opera**: \`dist-opera-MV3-*.zip\`
+          - **源码包**: \`browser-source.zip\` (位于 `browser-source` 目录下)
 
           ## 📋 安装指南
           详细安装说明请参考：[TOTP_UNLOCK_INSTALLATION_GUIDE.md](https://github.com/${{ github.repository }}/blob/main/TOTP_UNLOCK_INSTALLATION_GUIDE.md)
@@ -763,13 +399,12 @@ jobs:
           ## ⚠️ 免责声明
           本修改版本仅供技术学习和研究使用。请尊重软件版权，支持官方正版软件的开发。
           EOF
-
           echo "Generated release notes"
 
       - name: Create release
         uses: ncipollo/release-action@cdcc88a9acf3ca41c16c37bb7d21b9ad48560d87 # v1.15.0
         with:
-          artifacts: 'wardens-key-*.zip'
+          artifacts: 'release-artifacts/**/*.zip'
           commit: ${{ github.sha }}
           tag: "browser-v${{ env._REMOTE_VERSION }}"
           name: "Warden's Key browser-v${{ env._REMOTE_VERSION }}"
@@ -782,7 +417,7 @@ jobs:
     name: Check for failures
     if: always()
     runs-on: ubuntu-22.04
-    needs: [version-check, locales-test, build-source, build, create-tag, release]
+    needs: [version-check, locales-test, build, create-tag, release]
     steps:
       - name: Check if any job failed
         if: |
@@ -793,7 +428,6 @@ jobs:
           echo "=== Job Results ==="
           echo "version-check: ${{ needs.version-check.result }}"
           echo "locales-test: ${{ needs.locales-test.result }}"
-          echo "build-source: ${{ needs.build-source.result }}"
           echo "build: ${{ needs.build.result }}"
           echo "create-tag: ${{ needs.create-tag.result }}"
           echo "release: ${{ needs.release.result }}"
@@ -807,7 +441,6 @@ jobs:
           echo "Should release: ${{ needs.version-check.outputs.should_release }}"
           echo "Remote version: ${{ needs.version-check.outputs.remote_version }}"
           echo "Local version: ${{ needs.version-check.outputs.local_version }}"
-
           if [[ "${{ needs.version-check.outputs.should_continue }}" == "true" ]]; then
             echo "✅ Workflow completed - new version processed"
           else

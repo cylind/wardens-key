@@ -1,0 +1,101 @@
+name: 'Setup Browser Source'
+description: 'Downloads, extracts, and patches the Bitwarden browser source code.'
+
+inputs:
+  remote_version:
+    description: 'The remote version to download (e.g., 2024.6.0).'
+    required: true
+  remote_tag:
+    description: 'The remote git tag to use for the download URL (e.g., browser-v2024.6.0).'
+    required: true
+
+outputs:
+  source_path:
+    description: 'The path to the prepared source code directory.'
+    value: ${{ steps.extract-source.outputs.source_path }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Download browser source
+      id: download-source
+      shell: bash
+      run: |
+        echo "=== Downloading browser source v${{ inputs.remote_version }} ==="
+        DOWNLOAD_URL="https://github.com/bitwarden/clients/releases/download/${{ inputs.remote_tag }}/browser-source-${{ inputs.remote_version }}.zip"
+        echo "Download URL: $DOWNLOAD_URL"
+
+        # Download with retry mechanism
+        for i in {1..3}; do
+          echo "Download attempt $i/3..."
+          if curl -L -f -o browser-source.zip "$DOWNLOAD_URL"; then
+            echo "✅ Download successful"
+            break
+          else
+            echo "❌ Download attempt $i failed"
+            if [[ $i -eq 3 ]]; then
+              echo "❌ All download attempts failed"
+              exit 1
+            fi
+            sleep 5
+          fi
+        done
+
+        # Verify download
+        if [[ ! -f "browser-source.zip" || $(stat -c%s browser-source.zip) -lt 1000000 ]]; then
+          echo "❌ Downloaded file not found or seems too small (< 1MB)"
+          exit 1
+        fi
+        echo "✅ Download verification passed"
+
+    - name: Extract and verify source
+      id: extract-source
+      shell: bash
+      run: |
+        echo "=== Extracting browser source ==="
+        unzip -q browser-source.zip
+        SOURCE_DIR="browser-source"
+
+        if [[ ! -d "$SOURCE_DIR" ]]; then
+          echo "❌ $SOURCE_DIR directory not found after extraction"
+          exit 1
+        fi
+
+        # Check key files
+        REQUIRED_FILES=(
+          "$SOURCE_DIR/apps/browser/src/manifest.json"
+          "$SOURCE_DIR/package.json"
+          "$SOURCE_DIR/.nvmrc"
+        )
+        for file in "${REQUIRED_FILES[@]}"; do
+          if [[ ! -f "$file" ]]; then
+            echo "❌ Required file not found: $file"
+            exit 1
+          fi
+        done
+        echo "✅ Source extraction and verification completed"
+        echo "source_path=$SOURCE_DIR" >> $GITHUB_OUTPUT
+
+    - name: Apply patch
+      id: apply-patch
+      shell: bash
+      run: |
+        echo "=== Applying TOTP unlock patch ==="
+        if [[ ! -f "hasPremiumFromAnySource.patch" ]]; then
+          echo "❌ Patch file not found"
+          exit 1
+        fi
+
+        cd ${{ steps.extract-source.outputs.source_path }}
+        if patch -p1 < ../hasPremiumFromAnySource.patch; then
+          echo "✅ Patch applied successfully"
+        else
+          echo "❌ Patch application failed"
+          # Check if the modification already exists as a fallback
+          if grep -q "Always return true to enable TOTP for all users" libs/common/src/billing/services/account/billing-account-profile-state.service.ts; then
+            echo "✅ Patch appears to be already applied"
+          else
+            echo "❌ Patch failed and modification not found"
+            exit 1
+          fi
+        fi
