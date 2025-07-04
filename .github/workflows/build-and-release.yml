@@ -27,8 +27,8 @@ on:
         default: false
         type: boolean
   schedule:
-    # Check for new versions daily at 02:00 UTC
-    - cron: '0 2 * * *'
+    # On every Sunday 2:00
+    - cron: "0 2 * * 0"
 
 defaults:
   run:
@@ -398,26 +398,6 @@ jobs:
         run: |
           cat > release_notes.md << EOF
           🔓 **TOTP 功能完全解锁版本 - 基于 Bitwarden Browser v${{ env._REMOTE_VERSION }}**
-
-          ## 🎯 主要特性
-          - ✅ **完全解锁 TOTP 功能**：免费用户可使用所有 TOTP 相关功能
-          - ✅ **多浏览器支持**：Chrome、Firefox、Edge、Opera
-          - ✅ **保持原有功能**：不影响其他 Bitwarden 功能的正常使用
-          - ✅ **UI 完整性**：移除所有付费限制提示
-          - ✅ **自动填充支持**：TOTP 代码可用于自动填充
-          - ✅ **自动更新**：基于官方最新版本 v${{ env._REMOTE_VERSION }} 构建
-
-          ## 📦 下载说明
-          请根据您的浏览器选择对应的扩展包（文件名包含版本号和构建号）。
-
-          - **Chrome**: \`dist-chrome-MV3-*.zip\`
-          - **Firefox**: \`dist-firefox-*.zip\`
-          - **Edge**: \`dist-edge-MV3-*.zip\`
-          - **Opera**: \`dist-opera-MV3-*.zip\`
-          - **源码包**: \`browser-source.zip\` (位于 `browser-source` 目录下)
-
-          ## 📋 安装指南
-          详细安装说明请参考：[TOTP_UNLOCK_INSTALLATION_GUIDE.md](https://github.com/${{ github.repository }}/blob/main/TOTP_UNLOCK_INSTALLATION_GUIDE.md)
 
           ## 🔄 版本信息
           - **基础版本**: Bitwarden Browser v${{ env._REMOTE_VERSION }}
