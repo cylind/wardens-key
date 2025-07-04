@@ -1,9 +1,0 @@
-{
-  "generators": {
-    "basic-lib": {
-      "factory": "./src/generators/basic-lib",
-      "schema": "./src/generators/schema.json",
-      "description": "basic-lib generator"
-    }
-  }
-}

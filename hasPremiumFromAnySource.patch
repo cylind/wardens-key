@@ -1,0 +1,20 @@
+diff -urN browser-source/libs/common/src/billing/services/account/billing-account-profile-state.service.ts browser-source-mod/libs/common/src/billing/services/account/billing-account-profile-state.service.ts
+--- browser-source/libs/common/src/billing/services/account/billing-account-profile-state.service.ts	2025-07-02 21:40:16.000000000 +0800
++++ browser-source-mod/libs/common/src/billing/services/account/billing-account-profile-state.service.ts	2025-07-04 19:50:40.657825500 +0800
+@@ -38,13 +38,14 @@
+   }
+ 
+   hasPremiumFromAnySource$(userId: UserId): Observable<boolean> {
++    // MODIFIED: Always return true to bypass premium restrictions for TOTP
+     return this.stateProvider
+       .getUser(userId, BILLING_ACCOUNT_PROFILE_KEY_DEFINITION)
+       .state$.pipe(
+         map(
+           (profile) =>
+-            profile?.hasPremiumFromAnyOrganization === true ||
+-            profile?.hasPremiumPersonally === true,
++            // Always return true to enable TOTP for all users
++            true,
+         ),
+       );
+   }
