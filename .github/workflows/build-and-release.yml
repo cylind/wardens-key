@@ -44,7 +44,6 @@ jobs:
     outputs:
       should_continue: ${{ steps.version-compare.outputs.should_continue }}
       remote_version: ${{ steps.get-remote-version.outputs.remote_version }}
-      local_version: ${{ steps.get-local-version.outputs.local_version }}
       build_number: ${{ steps.version-info.outputs.build_number }}
       node_version: ${{ steps.node-version.outputs.node_version }}
       should_release: ${{ steps.release-check.outputs.should_release }}
@@ -70,57 +69,15 @@ jobs:
           echo "Latest remote version: $REMOTE_VERSION"
           echo "remote_tag=$REMOTE_TAG" >> $GITHUB_OUTPUT
           echo "remote_version=$REMOTE_VERSION" >> $GITHUB_OUTPUT
+          # Set version as environment variable for subsequent steps
+          echo "VERSION=${REMOTE_VERSION}" >> $GITHUB_ENV
+          echo "Discovered remote version: ${REMOTE_VERSION}"
 
-      - name: Get local latest version
-        id: get-local-version
-        run: |
-          echo "=== Getting local latest version ==="
-          LOCAL_TAG=$(git tag -l "browser-v*" | sort -V | tail -n1)
-          if [[ -z "$LOCAL_TAG" ]]; then
-            echo "No local browser-v tags found, treating as first run"
-            LOCAL_VERSION="0.0.0"
-          else
-            LOCAL_VERSION=${LOCAL_TAG#browser-v}
-          fi
-          echo "Latest local tag: ${LOCAL_TAG:-none}"
-          echo "Latest local version: $LOCAL_VERSION"
-          echo "local_version=$LOCAL_VERSION" >> $GITHUB_OUTPUT
-
-      - name: Compare versions
+      - name: Check if version already exists
         id: version-compare
         run: |
-          echo "=== Version Comparison ==="
-          echo "Remote version: ${{ steps.get-remote-version.outputs.remote_version }}"
-          echo "Local version: ${{ steps.get-local-version.outputs.local_version }}"
-          # Function to compare semantic versions
-          version_compare() {
-            local v1=$1
-            local v2=$2
-
-            # Split versions into arrays
-            IFS='.' read -ra V1 <<< "$v1"
-            IFS='.' read -ra V2 <<< "$v2"
-
-            # Pad arrays to same length
-            while [[ ${#V1[@]} -lt ${#V2[@]} ]]; do V1+=("0"); done
-            while [[ ${#V2[@]} -lt ${#V1[@]} ]]; do V2+=("0"); done
-
-            # Compare each part
-            for i in "${!V1[@]}"; do
-              # Check if parts are integers
-              if ! [[ "${V1[i]}" =~ ^[0-9]+$ && "${V2[i]}" =~ ^[0-9]+$ ]]; then
-                echo "Error: Non-integer version part found. V1[i]=${V1[i]}, V2[i]=${V2[i]}"
-                return 3 # Error code
-              fi
-
-              if [[ ${V1[i]} -gt ${V2[i]} ]]; then
-                return 1  # v1 > v2
-              elif [[ ${V1[i]} -lt ${V2[i]} ]]; then
-                return 2  # v1 < v2
-              fi
-            done
-            return 0  # v1 == v2
-          }
+          echo "=== Version Check ==="
+          echo "Remote version: ${VERSION}"
 
           should_continue=false
 
@@ -129,24 +86,17 @@ jobs:
             echo "✅ Force build enabled, continuing..."
             should_continue=true
           else
-            # Compare versions
-            version_compare "${{ steps.get-remote-version.outputs.remote_version }}" "${{ steps.get-local-version.outputs.local_version }}"
-            result=$?
-
-            if [[ $result -eq 1 ]]; then
-              echo "✅ Remote version is newer, continuing build..."
-              should_continue=true
-            elif [[ $result -eq 0 ]]; then
-              echo "⚠️ Versions are equal, skipping build unless forced"
-              should_continue=false
-            elif [[ $result -eq 2 ]]; then
-              echo "ℹ️ Local version is newer, skipping build"
+            # Check if tag already exists
+            TAG_NAME="browser-v${VERSION}"
+            if git tag -l | grep -q "^${TAG_NAME}$"; then
+              echo "⚠️ Tag ${TAG_NAME} already exists, skipping build"
               should_continue=false
             else
-              echo "❌ Error during version comparison. Exit code: $result"
-              exit 1
+              echo "✅ New version ${VERSION} detected, proceeding with build"
+              should_continue=true
             fi
           fi
+
           echo "Decision: should_continue=$should_continue"
           echo "should_continue=$should_continue" >> $GITHUB_OUTPUT
 
@@ -448,7 +398,6 @@ jobs:
           echo "Should continue: ${{ needs.version-check.outputs.should_continue }}"
           echo "Should release: ${{ needs.version-check.outputs.should_release }}"
           echo "Remote version: ${{ needs.version-check.outputs.remote_version }}"
-          echo "Local version: ${{ needs.version-check.outputs.local_version }}"
           if [[ "${{ needs.version-check.outputs.should_continue }}" == "true" ]]; then
             echo "✅ Workflow completed - new version processed"
           else
