@@ -59,7 +59,7 @@ jobs:
         run: |
           echo "=== Fetching latest browser version from bitwarden/clients ==="
           REMOTE_TAG=$(curl -s "https://api.github.com/repos/bitwarden/clients/releases" | \
-            jq -r '[.[] | select(.tag_name | startswith("browser-v")) | .tag_name] | sort_by(. | sub("browser-v"; "") | split(".") | map(tonumber)) | last')
+            jq -r '[.[] | select(.prerelease == false) | select(.tag_name | startswith("browser-v")) | select(.tag_name | sub("browser-v"; "") | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) | .tag_name] | sort_by(. | sub("browser-v"; "") | split(".") | map(tonumber)) | last')
           if [[ "$REMOTE_TAG" == "null" || -z "$REMOTE_TAG" ]]; then
             echo "❌ Failed to get remote version"
             exit 1
@@ -284,7 +284,7 @@ jobs:
               exit 1
           fi
 
-      - name: Fixed extension ID key
+      - name: Inject fixed extension ID key
         if: vars.EXTENSION_PUBLIC_KEY != '' && (matrix.name == 'chrome' || matrix.name == 'edge' || matrix.name == 'opera-mv3')
         run: |
           jq --arg k "${{ vars.EXTENSION_PUBLIC_KEY }}" '.key = $k' manifest.json > tmp.json && mv tmp.json manifest.json
