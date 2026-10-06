@@ -284,6 +284,13 @@ jobs:
               exit 1
           fi
 
+      - name: Fixed extension ID key
+        if: vars.EXTENSION_PUBLIC_KEY != '' && (matrix.name == 'chrome' || matrix.name == 'edge' || matrix.name == 'opera-mv3')
+        run: |
+          jq --arg k "${{ vars.EXTENSION_PUBLIC_KEY }}" '.key = $k' manifest.json > tmp.json && mv tmp.json manifest.json
+          echo "✅ Extension public key injected into manifest.json"
+        working-directory: browser-source/apps/browser/src
+
       - name: Build extension
         run: |
           echo "=== Building ${{ matrix.name }} extension ==="
