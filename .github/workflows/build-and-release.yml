@@ -284,13 +284,6 @@ jobs:
               exit 1
           fi
 
-      - name: Inject fixed extension ID key
-        if: vars.EXTENSION_PUBLIC_KEY != '' && (matrix.name == 'chrome' || matrix.name == 'edge' || matrix.name == 'opera-mv3')
-        run: |
-          jq --arg k "${{ vars.EXTENSION_PUBLIC_KEY }}" '.key = $k' manifest.json > tmp.json && mv tmp.json manifest.json
-          echo "✅ Extension public key injected into manifest.json"
-        working-directory: browser-source/apps/browser/src
-
       - name: Build extension
         run: |
           echo "=== Building ${{ matrix.name }} extension ==="
@@ -298,6 +291,23 @@ jobs:
           npm run ${{ matrix.npm_command }}
           echo "=== Checking build output ==="
           ls -la dist/ || echo "No dist directory found"
+        working-directory: browser-source/apps/browser
+
+      - name: Inject fixed extension ID key into dist
+        if: vars.EXTENSION_PUBLIC_KEY != '' && (matrix.name == 'chrome' || matrix.name == 'edge' || matrix.name == 'opera-mv3')
+        run: |
+          DIST_ZIP="dist/${{ matrix.archive_name }}"
+          TEMP_DIR="dist_key_inject_tmp"
+          mkdir -p "$TEMP_DIR"
+          unzip -q "$DIST_ZIP" -d "$TEMP_DIR"
+          jq --arg k "${{ vars.EXTENSION_PUBLIC_KEY }}" '.key = $k' "$TEMP_DIR/manifest.json" > "$TEMP_DIR/manifest.tmp.json"
+          mv "$TEMP_DIR/manifest.tmp.json" "$TEMP_DIR/manifest.json"
+          rm "$DIST_ZIP"
+          (cd "$TEMP_DIR" && zip -qr "../$DIST_ZIP" .)
+          rm -rf "$TEMP_DIR"
+          echo "✅ Extension public key injected into dist/manifest.json"
+          echo "=== Verifying key in manifest ==="
+          unzip -p "$DIST_ZIP" manifest.json | jq '.key'
         working-directory: browser-source/apps/browser
 
       - name: Upload extension artifact
